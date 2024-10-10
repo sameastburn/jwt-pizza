@@ -23,6 +23,7 @@ function TrashIcon() {
   );
 }
 
+/*
 function LocationIcon() {
   return (
     <svg
@@ -42,6 +43,7 @@ function LocationIcon() {
     </svg>
   );
 }
+*/
 
 function CautionIcon() {
   return (
@@ -253,4 +255,4 @@ function GreaterThanIcon() {
   );
 }
 
-export { TrashIcon, LocationIcon, KeyIcon, CautionIcon, CloseEyeIcon, PersonIcon, EmailIcon, StoreIcon, CloseIcon, HouseIcon, HamburgerIcon, GreaterThanIcon };
+export { TrashIcon, /*LocationIcon,*/ KeyIcon, CautionIcon, CloseEyeIcon, PersonIcon, EmailIcon, StoreIcon, CloseIcon, HouseIcon, HamburgerIcon, GreaterThanIcon };

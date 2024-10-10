@@ -215,6 +215,8 @@ test('purchase with login', async ({ page }) => {
   // Admin dashboard
   await page.getByRole('link', { name: 'Logout' }).click();
   await page.getByRole('link', { name: 'Login' }).click();
+  await page.getByRole('main').getByText('Register').click();
+  await page.getByRole('main').getByText('Login').click();
   await page.getByPlaceholder('Email address').fill('a@jwt.com');
   await page.getByPlaceholder('Email address').press('Tab');
   await page.getByPlaceholder('Password').fill('admin');
