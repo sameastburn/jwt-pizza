@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: Build frontend
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.set_version.outputs.version }}
@@ -16,27 +16,20 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: set version
+        id: set_version
+        run: |
+          echo "version=$(date +'%Y%m%d.%H%M%S')" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
 
-      - name: set version
-        id: set_version
-        run: |
-          version=$(date +'%Y%m%d.%H%M%S')
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          printf '{"version": "%s" }' "$version" > public/version.json
-
       - name: Build
         run: |
+          printf '{"version": "%s" }' ${{ steps.set_version.outputs.version }} > public/version.json
           npm ci && npm run build
-
-      - name: Update dist artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: package
-          path: dist/
 
       - name: Run tests
         run: |
@@ -54,16 +47,22 @@ jobs:
           git commit -m "generated"
           git push
 
+      - name: Update pages artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: dist/
+
   deploy:
     needs: build
     permissions:
       id-token: write
     runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://pizza.byucsstudent.click
     env:
       version: ${{ needs.build.outputs.version }}
+    environment:
+      name: staging
+      url: https://stage-pizza.devops329.click
     steps:
       - name: Create OIDC token to AWS
         uses: aws-actions/configure-aws-credentials@v4
@@ -72,7 +71,7 @@ jobs:
           aws-region: us-east-1
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT }}:role/${{ secrets.CI_IAM_ROLE }}
 
-      - name: Download dist artifact
+      - name: Download pages artifact
         uses: actions/download-artifact@v4
         with:
           name: package
@@ -82,3 +81,37 @@ jobs:
         run: |
           echo Deploying $version
           aws s3 cp dist s3://${{ secrets.APP_BUCKET }}/$version --recursive
+
+      - name: Update the CloudFront distribution
+        run: |
+          # Get the current distribution and update it to use the new version
+          aws cloudfront get-distribution-config --id ${{ secrets.DISTRIBUTION_ID }} > original.json
+          etag=$(jq -r '.ETag' original.json)
+          jq '.DistributionConfig' original.json > request.json
+          jq --arg version "/$version" '.Origins.Items[0].OriginPath = $version' request.json > finalRequest.json
+          aws cloudfront update-distribution --id ${{ secrets.DISTRIBUTION_ID }} --if-match $etag --distribution-config file://finalRequest.json
+
+          # Wait for the distribution to deploy and then invalidate the cache
+          while [ "$(aws cloudfront get-distribution --id ${{ secrets.DISTRIBUTION_ID }} --query 'Distribution.Status' --output text)" != "Deployed" ]; do echo "Distribution is still updating..."; sleep 5; done
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.DISTRIBUTION_ID }} --paths "/*"
+
+  release:
+    needs:
+      - build
+      - deploy
+    runs-on: ubuntu-latest
+    env:
+      version: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Create staging release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: stage-version-${{ env.version }}
+          name: Staging ${{ env.version }}
+          generateReleaseNotes: true
+          body: |
+            ## Description
+
+            ${{ github.event.head_commit.message }}
+
+            **commit**: ${{ github.sha }}
